@@ -18,7 +18,7 @@
 --    채널명/방송제목을 15분마다 반복 저장하면 하루 159MB 라 무료티어(500MB)가
 --    3일이면 찹니다. 변하지 않는 값은 별도 테이블로 빼고, live_snapshot 에는
 --    숫자만 남겨 행당 약 52바이트로 줄였습니다. -> 동접 10명 컷오프 기준 하루 약 12MB.
---    여기에 원본 30일 보관 + 집계는 영구 보관으로 용량이 일정하게 유지됩니다.
+--    여기에 원본 21일 보관 + 집계는 영구 보관으로 용량이 일정하게 유지됩니다.
 --
 --  시각 처리:
 --    collected_at 은 UTC 로 저장합니다.
@@ -152,7 +152,7 @@ create table if not exists public.live_snapshot (
     constraint pk_live_snapshot primary key (live_id, collected_at)
 );
 
-comment on table public.live_snapshot is '15분 간격 동접 스냅샷. 원본은 30일 보관 후 집계로 대체됨(run_rollup 참고)';
+comment on table public.live_snapshot is '15분 간격 동접 스냅샷. 원본은 21일 보관 후 집계로 대체됨(run_rollup 참고)';
 
 -- 시간 범위 조회 + 보존정책 삭제용.
 -- BRIN 을 쓰는 이유: 데이터가 항상 시간순으로 들어와서 BRIN 이 잘 맞고,
@@ -160,9 +160,13 @@ comment on table public.live_snapshot is '15분 간격 동접 스냅샷. 원본�
 create index if not exists idx_snapshot_collected_at_brin
     on public.live_snapshot using brin (collected_at) with (pages_per_range = 32);
 
--- 카테고리별 조회 (집계 테이블이 아직 없는 최근 1시간 데이터를 직접 볼 때)
-create index if not exists idx_snapshot_category
-    on public.live_snapshot (category_id, collected_at desc);
+-- 카테고리 인덱스는 만들었다가 제거했습니다.
+--   카테고리 분석은 전부 agg_category_hourly 에서 하기 때문에 이 인덱스를
+--   실제로 타는 조회가 없는데, 실측 결과 전체 용량의 15%(행당 16바이트)를
+--   차지하고 있었습니다. 원본 보관 기간을 벌기 위해 지웁니다.
+--   원본을 카테고리로 직접 뒤질 일이 생기면 BRIN 시간 인덱스로 기간을 좁힌 뒤
+--   훑으면 되고, 그 정도 조회는 몇 초 안에 끝납니다.
+drop index if exists public.idx_snapshot_category;
 
 
 -- ----------------------------------------------------------------------------
@@ -295,7 +299,7 @@ grant all    on all functions in schema public to service_role;
 create or replace function public.run_rollup(
     p_hour_lookback     integer default 6,   -- 최근 6시간 재집계
     p_day_lookback      integer default 3,   -- 최근 3일 재집계
-    p_retention_days    integer default 30   -- 원본 보관 기간
+    p_retention_days    integer default 21   -- 원본 보관 기간
 )
 returns table (
     hours_updated  integer,
