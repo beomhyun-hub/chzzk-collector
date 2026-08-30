@@ -1,0 +1,36 @@
+# --- 절대 커밋되면 안 되는 것 ---
+.env
+.env.local
+*.pem
+*.key
+secrets.json
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- 로그 / 임시 데이터 ---
+*.log
+logs/
+tmp/
+data/*.json
+data/*.csv
+
+# --- 에디터 / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- 나중에 붙일 Vercel 대시보드용 ---
+node_modules/
+.next/
+.vercel/
