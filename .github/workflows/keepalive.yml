@@ -1,0 +1,26 @@
+name: 예약 실행 유지
+
+# GitHub 는 "저장소에 60일간 아무 변경이 없으면" 예약 실행(cron)을 자동으로 꺼버립니다.
+# 우리 수집 워크플로우는 코드를 바꾸지 않으므로 그냥 두면 두 달 뒤 조용히 멈춥니다.
+# 그래서 매월 1일에 빈 커밋을 하나 남겨 저장소를 "활동 중"으로 유지합니다.
+
+on:
+  schedule:
+    - cron: "0 3 1 * *" # 매월 1일 03:00 UTC (한국시간 정오)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: 빈 커밋 남기기
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty -m "chore: 예약 실행 유지용 커밋 [skip ci]"
+          git push
