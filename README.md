@@ -7,8 +7,8 @@
 - [x] 1단계 — API 응답 구조 검증 (`scripts/test_api.py`) — 통과
 - [x] 2단계 — Supabase 스키마 (`sql/01_schema.sql`) — 적용·검증 완료 (`scripts/test_db.py`)
 - [x] 3단계 — 수집 스크립트 (`chzzk_collector/`) — 첫 수집 성공 (89페이지 / 1,780건 / 32초)
-- [ ] 4단계 — GitHub Actions 워크플로우 (15분 cron)
-- [ ] 5단계 — 첫 자동 수집 확인 및 데이터 점검
+- [x] 4단계 — GitHub Actions 워크플로우 (15분 cron) — 수동 실행 성공 (1,748건 / 49초)
+- [ ] 5단계 — 자동 예약 실행 확인 및 데이터 점검
 
 ## 폴더 구조
 
@@ -24,7 +24,17 @@ scripts/
   check_data.py         수집된 데이터 점검
 sql/
   01_schema.sql         테이블·인덱스·집계함수 (여러 번 실행해도 안전)
+.github/workflows/
+  collect.yml           15분마다 수집 (cron */15)
+  keepalive.yml         60일 무활동으로 cron 이 꺼지는 것 방지 (월 1회)
 ```
+
+## GitHub Actions
+
+- 저장소: https://github.com/beomhyun-hub/chzzk-collector (public — Actions 무료 시간 무제한)
+- Secrets 4개: `CHZZK_CLIENT_ID`, `CHZZK_CLIENT_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`
+- 수동 실행: Actions 탭 > 치지직 라이브 수집 > Run workflow
+- 예약 실행은 GitHub 서버 사정으로 몇 분 늦을 수 있습니다 (분석에는 영향 없음)
 
 ## 명령어
 
