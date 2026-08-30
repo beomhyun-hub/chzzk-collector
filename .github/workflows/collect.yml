@@ -52,7 +52,7 @@ jobs:
           PAGE_DELAY_SECONDS: "0.3"
           REQUEST_TIMEOUT: "10"
           MAX_RETRIES: "3"
-          RETENTION_DAYS: "30"
+          RETENTION_DAYS: "21"
         run: |
           set -o pipefail
           python -m chzzk_collector.collect 2>&1 | tee collect.log
