@@ -68,6 +68,9 @@ class Config:
     # 보존정책
     retention_days: int = 30
 
+    # 카테고리 포스터 이미지를 한 회차에 몇 개까지 조회할지 (0 이면 끔)
+    category_backfill_per_run: int = 20
+
     @classmethod
     def from_env(cls) -> "Config":
         load_dotenv()  # .env 가 없으면 아무 일도 하지 않음 (Actions 환경)
@@ -95,6 +98,7 @@ class Config:
             max_retries=_int("MAX_RETRIES", 3),
             page_delay_seconds=_float("PAGE_DELAY_SECONDS", 0.3),
             retention_days=_int("RETENTION_DAYS", 30),
+            category_backfill_per_run=_int("CATEGORY_BACKFILL_PER_RUN", 20),
         )
 
     def summary(self) -> str:

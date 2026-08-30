@@ -164,6 +164,23 @@ def main() -> int:
 
         status = "partial" if fetched.error else "success"
 
+        # --- 3-1) 카테고리 포스터 이미지 조금씩 채우기 ---------------------
+        # 카테고리는 한 번 채우면 거의 안 바뀌므로, 매 회차 몇 개씩만 조회합니다.
+        # 실패해도 수집 자체에는 영향이 없습니다.
+        try:
+            todo = db.categories_missing_poster(cfg.category_backfill_per_run)
+            if todo:
+                filled = 0
+                for row in todo:
+                    url = chzzk.find_category_poster(
+                        row["live_category_value"], row["live_category"])
+                    db.update_category_poster(row["category_id"], url)
+                    if url:
+                        filled += 1
+                log.info("카테고리 포스터 - %d개 조회, %d개 확보", len(todo), filled)
+        except (ChzzkError, DbError) as e:
+            log.warning("카테고리 포스터 채우기 실패(수집에는 영향 없음): %s", e)
+
         # --- 4) 집계 + 보존정책 ------------------------------------------
         try:
             rollup = db.run_rollup()

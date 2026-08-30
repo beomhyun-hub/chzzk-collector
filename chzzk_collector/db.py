@@ -10,7 +10,9 @@ supabase-py 대신 requests 로 PostgREST 를 직접 호출합니다.
 
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
+from urllib.parse import quote
 
 import requests
 
@@ -167,6 +169,40 @@ class SupabaseDB:
         # on_conflict 를 걸어 두면 같은 회차를 다시 돌려도 중복 에러가 나지 않는다
         self._upsert("live_snapshot", rows, on_conflict="live_id,collected_at")
         return len(rows)
+
+    # ------------------------------------------------------------------
+    def categories_missing_poster(self, limit: int) -> list[dict]:
+        """포스터 이미지가 아직 없는 카테고리를 오래된 것부터 가져온다.
+
+        한 번 찾지 못한 카테고리는 poster_checked_at 이 기록되므로,
+        7일이 지나기 전에는 다시 조회하지 않는다.
+        """
+        if limit <= 0:
+            return []
+        # 시각의 '+09:00' 같은 부분이 쿼리스트링에서 공백으로 해석되지 않도록 인코딩한다
+        cutoff = quote(
+            (datetime.now(timezone.utc) - timedelta(days=7)).isoformat(), safe="")
+        resp = self._request(
+            "GET",
+            "/category?select=category_id,live_category,live_category_value"
+            "&poster_image_url=is.null"
+            "&live_category=neq."
+            "&or=(poster_checked_at.is.null,poster_checked_at.lt.{})"
+            "&order=poster_checked_at.nullsfirst&limit={}".format(cutoff, limit),
+            label="포스터 대상 조회",
+        )
+        return resp.json()
+
+    def update_category_poster(self, category_id: int, url: str | None) -> None:
+        self._request(
+            "PATCH", "/category?category_id=eq.{}".format(category_id),
+            prefer="return=minimal",
+            json={
+                "poster_image_url": url,
+                "poster_checked_at": datetime.now(timezone.utc).isoformat(),
+            },
+            label="포스터 저장",
+        )
 
     # ------------------------------------------------------------------
     def run_rollup(self) -> dict:

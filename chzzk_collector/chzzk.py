@@ -19,6 +19,7 @@ log = logging.getLogger(__name__)
 BASE_URL = "https://openapi.chzzk.naver.com"
 LIVES_PATH = "/open/v1/lives"
 CHANNELS_PATH = "/open/v1/channels"
+CATEGORY_SEARCH_PATH = "/open/v1/categories/search"
 
 # 재시도할 상태코드 (429=한도초과, 5xx=서버 문제). 4xx 는 재시도해도 소용없음.
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
@@ -184,6 +185,27 @@ class ChzzkClient:
         log.info("수집 완료 - %d페이지 / %d건 / 사유: %s",
                  result.pages_fetched, len(result.lives), result.stop_reason)
         return result
+
+    # ------------------------------------------------------------------
+    def find_category_poster(self, name: str, category_id: str) -> str | None:
+        """카테고리 이름으로 검색해 포스터 이미지 URL 을 찾는다.
+
+        lives 응답의 liveCategory 가 이 API 의 categoryId 와 같다는 것을 확인했으므로
+        (scripts/test_category_api.py), 검색 결과 중 id 가 일치하는 것만 채택한다.
+        이름이 비슷한 다른 카테고리의 이미지를 잘못 가져오지 않기 위해서다.
+        """
+        if not name or not category_id:
+            return None
+        try:
+            content = self._get(CATEGORY_SEARCH_PATH, {"query": name, "size": 10})
+        except ChzzkError as e:
+            log.warning("  카테고리 '%s' 검색 실패: %s", name, e)
+            return None
+
+        for item in content.get("data") or []:
+            if item.get("categoryId") == category_id:
+                return item.get("posterImageUrl") or None
+        return None
 
     # ------------------------------------------------------------------
     def fetch_channels(self, channel_ids: list[str]) -> list[dict[str, Any]]:

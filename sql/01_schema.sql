@@ -81,13 +81,25 @@ insert into public.category (category_type, live_category, live_category_value)
 values ('', '', '')
 on conflict (category_type, live_category, live_category_value) do nothing;
 
+-- 카테고리 포스터 이미지 (GET /open/v1/categories/search 로 채움)
+--   lives 응답의 liveCategory 가 그 API 의 categoryId 와 정확히 일치하는 것을
+--   확인했습니다. 포스터가 없는 카테고리를 매 회차 조금씩 채워 넣고, 조회한
+--   시각을 남겨 찾지 못한 카테고리를 무한히 다시 조회하지 않도록 합니다.
+alter table public.category add column if not exists poster_image_url  text;
+alter table public.category add column if not exists poster_checked_at timestamptz;
+
+create index if not exists idx_category_poster_todo
+    on public.category (poster_checked_at nulls first)
+    where poster_image_url is null;
+
 -- '' 을 '미분류' 로 보여주는 뷰
 create or replace view public.v_category as
 select
     category_id,
     nullif(category_type, '')                          as category_type,
     nullif(live_category, '')                          as live_category,
-    coalesce(nullif(live_category_value, ''), '미분류') as category_name
+    coalesce(nullif(live_category_value, ''), '미분류') as category_name,
+    poster_image_url
 from public.category;
 
 
