@@ -6,7 +6,7 @@ name: 예약 실행 유지
 
 on:
   schedule:
-    - cron: "0 3 1 * *" # 매월 1일 03:00 UTC (한국시간 정오)
+    - cron: "23 4 1 * *" # 매월 1일 04:23 UTC (한국시간 13:23) — 정각을 피해 잡음
   workflow_dispatch:
 
 permissions:
