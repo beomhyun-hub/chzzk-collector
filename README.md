@@ -7,8 +7,8 @@
 - [x] 1단계 — API 응답 구조 검증 (`scripts/test_api.py`) — 통과
 - [x] 2단계 — Supabase 스키마 (`sql/01_schema.sql`) — 적용·검증 완료 (`scripts/test_db.py`)
 - [x] 3단계 — 수집 스크립트 (`chzzk_collector/`) — 첫 수집 성공 (89페이지 / 1,780건 / 32초)
-- [x] 4단계 — GitHub Actions 워크플로우 (15분 cron) — 수동 실행 성공 (1,748건 / 49초)
-- [ ] 5단계 — 자동 예약 실행 확인 및 데이터 점검
+- [x] 4단계 — GitHub Actions 워크플로우 — 수동 실행 성공 (1,748건 / 49초)
+- [x] 5단계 — 자동 예약 실행 확인 — cron 은 발동하나 간격이 안 지켜짐을 확인, 반복문 방식으로 해결
 
 ## 폴더 구조
 
@@ -34,7 +34,19 @@ sql/
 - 저장소: https://github.com/beomhyun-hub/chzzk-collector (public — Actions 무료 시간 무제한)
 - Secrets 4개: `CHZZK_CLIENT_ID`, `CHZZK_CLIENT_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`
 - 수동 실행: Actions 탭 > 치지직 라이브 수집 > Run workflow
-- 예약 실행은 GitHub 서버 사정으로 몇 분 늦을 수 있습니다 (분석에는 영향 없음)
+  - `duration_minutes` 입력값: `0` 이면 1회만 수집. 숫자를 넣으면 그 시간만큼 15분 간격 반복
+
+### 15분 간격을 지키는 방법 (중요)
+
+GitHub 무료 예약 실행은 **지정한 cron 간격을 지켜주지 않습니다.**
+15분 간격으로 걸어도 실측(2026-08-30~31)에서는 2시간 15분~2시간 41분마다 한 번씩만 발동했습니다.
+
+그래서 cron 은 '작업을 깨우는 방아쇠'로만 쓰고, 실제 15분 간격은 job 안의 반복문이 지킵니다.
+한 번 깨어나면 340분(5시간 40분) 동안 15분마다 수집합니다. 작업 최대 수명 6시간 안쪽입니다.
+`concurrency.cancel-in-progress: true` 라서 cron 이 다시 발동하면 새 회차가 앞 회차를 이어받습니다.
+
+간격을 바꾸려면 `collect.yml` 의 `INTERVAL_SECONDS` 만 고치면 됩니다.
+저장소가 public 이라 Actions 시간이 무제한이므로 오래 도는 것 자체는 비용이 들지 않습니다.
 
 ## 명령어
 

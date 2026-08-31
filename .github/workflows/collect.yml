@@ -1,29 +1,42 @@
 name: 치지직 라이브 수집
 
 on:
-  # 15분 간격이되, 정각/15분/30분/45분을 피해 7분씩 밀어 둡니다.
-  # GitHub 무료 예약 실행은 전 세계 저장소가 몰리는 '딱 떨어지는 시각'에
-  # 지연되거나 아예 건너뛰는 일이 잦습니다. (*/15 로는 실제로 한 번도 안 돌았습니다)
-  # 수집 시각(collected_at)은 실제 실행 시각으로 기록하므로 분석에는 영향이 없습니다.
+  # GitHub 무료 예약 실행은 지정한 간격을 지켜주지 않습니다.
+  # 실측(2026-08-30~31): 15분 간격으로 걸어도 실제로는 2시간 15분~2시간 41분마다 한 번씩만 발동했습니다.
+  # 그래서 cron 은 '작업을 깨우는 방아쇠'로만 쓰고,
+  # 실제 15분 간격은 아래 job 안에서 반복문으로 직접 지킵니다.
   schedule:
     - cron: "7,22,37,52 * * * *"
 
   # Actions 탭에서 "Run workflow" 버튼으로 직접 돌려볼 때 사용합니다.
   workflow_dispatch:
+    inputs:
+      duration_minutes:
+        description: "반복할 시간(분). 0 이면 1회만 수집하고 끝냅니다."
+        default: "0"
+        required: false
 
-# 앞 회차가 아직 안 끝났으면 겹쳐 돌지 않도록 막습니다.
+# 뒤늦게 깨어난 회차가 앞 회차를 이어받습니다.
+# 반복문이 길게 도는 구조라 겹쳐 돌면 안 되고, 새 회차가 더 최신이므로 앞 것을 취소시킵니다.
 concurrency:
   group: chzzk-collect
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 # 이 워크플로우는 저장소를 읽기만 합니다.
 permissions:
   contents: read
 
+env:
+  # 수집 간격(초). 이 숫자만 고치면 됩니다.
+  INTERVAL_SECONDS: "900"
+  # 예약 실행으로 깨어났을 때 반복할 시간(분). 작업 최대 수명 6시간보다 넉넉히 낮게 둡니다.
+  SCHEDULED_DURATION_MINUTES: "340"
+
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 10 # 정상은 1분 이내. 멈추면 강제 종료하고 다음 회차를 기다립니다.
+    # 위 340분 + 마지막 회차 여유. 작업 자체가 멈추면 강제 종료합니다.
+    timeout-minutes: 350
 
     steps:
       - name: 소스 받기
@@ -38,7 +51,7 @@ jobs:
       - name: 라이브러리 설치
         run: pip install -r requirements.txt
 
-      - name: 수집 실행
+      - name: 반복 수집
         env:
           # 비밀값 - 저장소 Settings > Secrets and variables > Actions 에 등록
           CHZZK_CLIENT_ID: ${{ secrets.CHZZK_CLIENT_ID }}
@@ -53,9 +66,50 @@ jobs:
           REQUEST_TIMEOUT: "10"
           MAX_RETRIES: "3"
           RETENTION_DAYS: "21"
+
+          DURATION_MINUTES: ${{ github.event.inputs.duration_minutes || '' }}
         run: |
           set -o pipefail
-          python -m chzzk_collector.collect 2>&1 | tee collect.log
+
+          # 수동 실행이면 입력값을, 예약 실행이면 기본 반복 시간을 씁니다.
+          if [ -n "$DURATION_MINUTES" ]; then
+            minutes="$DURATION_MINUTES"
+          else
+            minutes="$SCHEDULED_DURATION_MINUTES"
+          fi
+
+          interval="$INTERVAL_SECONDS"
+          deadline=$(( $(date +%s) + minutes * 60 ))
+          round=0
+          failed=0
+
+          echo "반복 시간 ${minutes}분 / 수집 간격 ${interval}초"
+
+          while : ; do
+            round=$(( round + 1 ))
+            started=$(date +%s)
+            echo ""
+            echo "───── ${round}회차 $(date -u '+%Y-%m-%d %H:%M:%S UTC') ─────"
+
+            # 한 회차가 실패해도 반복은 계속합니다. 다음 회차가 알아서 따라잡습니다.
+            if ! python -m chzzk_collector.collect 2>&1 | tee -a collect.log ; then
+              failed=$(( failed + 1 ))
+              echo "!! ${round}회차 실패 - 다음 회차로 넘어갑니다 (누적 실패 ${failed}회)"
+            fi
+
+            # 다음 회차 시각은 '이번 회차 시작 시각 + 간격' 으로 잡습니다.
+            # 수집에 걸린 시간만큼 밀리지 않게 하려는 것입니다.
+            next=$(( started + interval ))
+            [ "$next" -ge "$deadline" ] && break
+
+            now=$(date +%s)
+            if [ "$next" -gt "$now" ]; then
+              sleep $(( next - now ))
+            fi
+          done
+
+          echo ""
+          echo "총 ${round}회차 수행, 실패 ${failed}회"
 
       - name: 실행 결과 요약 남기기
         if: always()
@@ -64,6 +118,6 @@ jobs:
             echo "### 수집 결과"
             echo ""
             echo '```'
-            tail -n 12 collect.log 2>/dev/null || echo "로그 없음"
+            tail -n 20 collect.log 2>/dev/null || echo "로그 없음"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
