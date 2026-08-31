@@ -1,10 +1,10 @@
 name: 치지직 라이브 수집
 
 on:
-  # GitHub 무료 예약 실행은 지정한 간격을 지켜주지 않습니다.
-  # 실측(2026-08-30~31): 15분 간격으로 걸어도 실제로는 2시간 15분~2시간 41분마다 한 번씩만 발동했습니다.
+  # GitHub 무료 예약 실행은 지정한 cron 간격을 지켜주지 않습니다.
+  # 실측(2026-08-30~31): 15분으로 걸어도 실제 발동은 2시간 15분~6시간 3분마다 한 번이었습니다.
   # 그래서 cron 은 '작업을 깨우는 방아쇠'로만 쓰고,
-  # 실제 15분 간격은 아래 job 안에서 반복문으로 직접 지킵니다.
+  # 실제 15분 간격은 _collect-loop.yml 안의 반복문이 지킵니다.
   schedule:
     - cron: "7,22,37,52 * * * *"
 
@@ -17,107 +17,42 @@ on:
         required: false
 
 # 뒤늦게 깨어난 회차가 앞 회차를 이어받습니다.
-# 반복문이 길게 도는 구조라 겹쳐 돌면 안 되고, 새 회차가 더 최신이므로 앞 것을 취소시킵니다.
+# 구간이 길게 이어지는 구조라 겹쳐 돌면 안 되고, 새 회차가 더 최신이므로 앞 것을 취소시킵니다.
 concurrency:
   group: chzzk-collect
   cancel-in-progress: true
 
-# 이 워크플로우는 저장소를 읽기만 합니다.
 permissions:
   contents: read
 
-env:
-  # 수집 간격(초). 이 숫자만 고치면 됩니다.
-  INTERVAL_SECONDS: "900"
-  # 예약 실행으로 깨어났을 때 반복할 시간(분). 작업 최대 수명 6시간보다 넉넉히 낮게 둡니다.
-  SCHEDULED_DURATION_MINUTES: "340"
-
+# 작업 하나의 수명 한계가 6시간이라, 340분짜리 구간을 이어붙여 한 번 깨어날 때
+# 17시간까지 덮습니다. 관측된 최대 cron 간격(6시간 3분)보다 넉넉합니다.
+# 예약 실행이 아닌 수동 실행은 1구간만 돌고 끝납니다.
 jobs:
-  collect:
-    runs-on: ubuntu-latest
-    # 위 340분 + 마지막 회차 여유. 작업 자체가 멈추면 강제 종료합니다.
-    timeout-minutes: 350
+  leg1:
+    uses: ./.github/workflows/_collect-loop.yml
+    with:
+      duration_minutes: ${{ github.event_name == 'schedule' && 340 || fromJSON(github.event.inputs.duration_minutes || '0') }}
+      # 오래 잠들어 있다 깨어난 직후라 경계를 기다리지 않고 바로 한 번 수집합니다.
+      collect_immediately: true
+      leg: "1/3"
+    secrets: inherit
 
-    steps:
-      - name: 소스 받기
-        uses: actions/checkout@v5
+  leg2:
+    needs: leg1
+    # 앞 구간이 실패해도 이어받습니다. 취소된 경우(새 회차가 이어받은 경우)에만 멈춥니다.
+    if: ${{ github.event_name == 'schedule' && !cancelled() }}
+    uses: ./.github/workflows/_collect-loop.yml
+    with:
+      duration_minutes: 340
+      leg: "2/3"
+    secrets: inherit
 
-      - name: 파이썬 준비
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - name: 라이브러리 설치
-        run: pip install -r requirements.txt
-
-      - name: 반복 수집
-        env:
-          # 비밀값 - 저장소 Settings > Secrets and variables > Actions 에 등록
-          CHZZK_CLIENT_ID: ${{ secrets.CHZZK_CLIENT_ID }}
-          CHZZK_CLIENT_SECRET: ${{ secrets.CHZZK_CLIENT_SECRET }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-
-          # 비밀이 아닌 설정값 - 바꾸고 싶으면 이 파일에서 숫자만 고치면 됩니다
-          MIN_CONCURRENT_USERS: "10"
-          MAX_PAGES: "200"
-          PAGE_DELAY_SECONDS: "0.3"
-          REQUEST_TIMEOUT: "10"
-          MAX_RETRIES: "3"
-          RETENTION_DAYS: "21"
-
-          DURATION_MINUTES: ${{ github.event.inputs.duration_minutes || '' }}
-        run: |
-          set -o pipefail
-
-          # 수동 실행이면 입력값을, 예약 실행이면 기본 반복 시간을 씁니다.
-          if [ -n "$DURATION_MINUTES" ]; then
-            minutes="$DURATION_MINUTES"
-          else
-            minutes="$SCHEDULED_DURATION_MINUTES"
-          fi
-
-          interval="$INTERVAL_SECONDS"
-          deadline=$(( $(date +%s) + minutes * 60 ))
-          round=0
-          failed=0
-
-          echo "반복 시간 ${minutes}분 / 수집 간격 ${interval}초"
-
-          while : ; do
-            round=$(( round + 1 ))
-            started=$(date +%s)
-            echo ""
-            echo "───── ${round}회차 $(date -u '+%Y-%m-%d %H:%M:%S UTC') ─────"
-
-            # 한 회차가 실패해도 반복은 계속합니다. 다음 회차가 알아서 따라잡습니다.
-            if ! python -m chzzk_collector.collect 2>&1 | tee -a collect.log ; then
-              failed=$(( failed + 1 ))
-              echo "!! ${round}회차 실패 - 다음 회차로 넘어갑니다 (누적 실패 ${failed}회)"
-            fi
-
-            # 다음 회차 시각은 '이번 회차 시작 시각 + 간격' 으로 잡습니다.
-            # 수집에 걸린 시간만큼 밀리지 않게 하려는 것입니다.
-            next=$(( started + interval ))
-            [ "$next" -ge "$deadline" ] && break
-
-            now=$(date +%s)
-            if [ "$next" -gt "$now" ]; then
-              sleep $(( next - now ))
-            fi
-          done
-
-          echo ""
-          echo "총 ${round}회차 수행, 실패 ${failed}회"
-
-      - name: 실행 결과 요약 남기기
-        if: always()
-        run: |
-          {
-            echo "### 수집 결과"
-            echo ""
-            echo '```'
-            tail -n 20 collect.log 2>/dev/null || echo "로그 없음"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+  leg3:
+    needs: leg2
+    if: ${{ github.event_name == 'schedule' && !cancelled() }}
+    uses: ./.github/workflows/_collect-loop.yml
+    with:
+      duration_minutes: 340
+      leg: "3/3"
+    secrets: inherit

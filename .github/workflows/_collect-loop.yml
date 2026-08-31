@@ -1,0 +1,131 @@
+# 수집 반복 한 구간(leg). collect.yml 이 이어서 여러 번 호출합니다.
+# 직접 실행하는 워크플로우가 아니라 호출용이라 이름 앞에 _ 를 붙였습니다.
+name: 수집 반복 구간
+
+on:
+  workflow_call:
+    inputs:
+      duration_minutes:
+        description: "이 구간이 반복할 시간(분). 0 이면 1회만 수집하고 끝냅니다."
+        type: number
+        required: true
+      interval_seconds:
+        description: "수집 간격(초). 900 이면 :00 :15 :30 :45 에 맞춰 돕니다."
+        type: number
+        default: 900
+      collect_immediately:
+        description: "구간 시작 직후에도 한 번 수집할지. 첫 구간만 true 로 씁니다."
+        type: boolean
+        default: false
+      leg:
+        description: "로그에 표시할 구간 번호"
+        type: string
+        default: "?"
+
+permissions:
+  contents: read
+
+jobs:
+  loop:
+    runs-on: ubuntu-latest
+    # GitHub 작업 하나의 수명 한계가 6시간입니다. 그보다 낮게 둡니다.
+    timeout-minutes: 350
+
+    steps:
+      - name: 소스 받기
+        uses: actions/checkout@v5
+
+      - name: 파이썬 준비
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 라이브러리 설치
+        run: pip install -r requirements.txt
+
+      - name: 반복 수집
+        env:
+          # 비밀값 - 저장소 Settings > Secrets and variables > Actions 에 등록
+          CHZZK_CLIENT_ID: ${{ secrets.CHZZK_CLIENT_ID }}
+          CHZZK_CLIENT_SECRET: ${{ secrets.CHZZK_CLIENT_SECRET }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
+          # 비밀이 아닌 설정값
+          MIN_CONCURRENT_USERS: "10"
+          MAX_PAGES: "200"
+          PAGE_DELAY_SECONDS: "0.3"
+          REQUEST_TIMEOUT: "10"
+          MAX_RETRIES: "3"
+          RETENTION_DAYS: "21"
+
+          DURATION_MINUTES: ${{ inputs.duration_minutes }}
+          INTERVAL_SECONDS: ${{ inputs.interval_seconds }}
+          COLLECT_IMMEDIATELY: ${{ inputs.collect_immediately }}
+          LEG: ${{ inputs.leg }}
+        run: |
+          set -o pipefail
+
+          interval="$INTERVAL_SECONDS"
+          minutes="$DURATION_MINUTES"
+          deadline=$(( $(date +%s) + minutes * 60 ))
+          round=0
+          failed=0
+
+          collect() {
+            round=$(( round + 1 ))
+            echo ""
+            echo "───── ${LEG}구간 ${round}회차 $(date -u '+%Y-%m-%d %H:%M:%S UTC') ─────"
+            # 한 회차가 실패해도 반복은 계속합니다. 다음 회차가 알아서 따라잡습니다.
+            if ! python -m chzzk_collector.collect 2>&1 | tee -a collect.log ; then
+              failed=$(( failed + 1 ))
+              echo "!! 실패 - 다음 회차로 넘어갑니다 (누적 실패 ${failed}회)"
+            fi
+          }
+
+          echo "${LEG}구간 / 반복 ${minutes}분 / 간격 ${interval}초"
+
+          # 수동으로 1회만 돌려보는 경우
+          if [ "$minutes" -le 0 ]; then
+            collect
+            echo ""
+            echo "1회 수집 완료 (실패 ${failed}회)"
+            exit 0
+          fi
+
+          # 오래 잠들어 있다 깨어난 첫 구간은 경계를 기다리지 않고 바로 한 번 수집합니다.
+          # 단, 다음 경계가 2분 안이면 곧 돌 테니 건너뜁니다.
+          if [ "$COLLECT_IMMEDIATELY" = "true" ]; then
+            now=$(date +%s)
+            if [ $(( (now / interval + 1) * interval - now )) -gt 120 ]; then
+              collect
+            else
+              echo "다음 경계가 2분 안이라 시작 직후 수집은 건너뜁니다"
+            fi
+          fi
+
+          # 이후로는 정각 기준 경계(:00 :15 :30 :45)에 맞춰 수집합니다.
+          # epoch 초가 interval 의 배수인 시각이 곧 그 경계입니다
+          # (900 이 3600 을 나누므로 UTC 든 KST 든 정각에 정렬됩니다).
+          while : ; do
+            now=$(date +%s)
+            next=$(( (now / interval + 1) * interval ))
+            [ "$next" -ge "$deadline" ] && break
+            sleep $(( next - now ))
+            collect
+          done
+
+          echo ""
+          echo "${LEG}구간 종료 - 총 ${round}회차, 실패 ${failed}회"
+
+      - name: 실행 결과 요약 남기기
+        if: always()
+        run: |
+          {
+            echo "### ${{ inputs.leg }}구간 수집 결과"
+            echo ""
+            echo '```'
+            tail -n 20 collect.log 2>/dev/null || echo "로그 없음"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
