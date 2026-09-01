@@ -9,6 +9,7 @@
 - [x] 3단계 — 수집 스크립트 (`chzzk_collector/`) — 첫 수집 성공 (89페이지 / 1,780건 / 32초)
 - [x] 4단계 — GitHub Actions 워크플로우 — 수동 실행 성공 (1,748건 / 49초)
 - [x] 5단계 — 자동 예약 실행 확인 — cron 은 발동하나 간격이 안 지켜짐을 확인, 반복문 방식으로 해결
+- [x] 6단계 — 사이트(GitHub Pages) — 수집할 때마다 `gh-pages` 브랜치로 갱신
 
 ## 폴더 구조
 
@@ -22,6 +23,12 @@ scripts/
   test_api.py           API 응답 구조 검증
   test_db.py            DB 연결/권한/쓰기 검증
   check_data.py         수집된 데이터 점검
+  build_site_data.py    사이트가 읽을 JSON 생성 (수집 워크플로가 매번 호출)
+  dump_preview.py       아티팩트 시안용 데이터 뽑기 (이미지를 base64 로 심음)
+  build_dashboard_data.py  위 출력을 아티팩트 시안의 DATA 형식으로 변환
+site/
+  index.html            사이트 한 장 (첫 화면 + 채널·카테고리 상세)
+  data/                 build_site_data.py 가 만드는 JSON (커밋하지 않음)
 sql/
   01_schema.sql         테이블·인덱스·집계함수 (여러 번 실행해도 안전)
 .github/workflows/
@@ -62,6 +69,29 @@ GitHub 무료 예약 실행은 **지정한 cron 간격을 지켜주지 않습니
 간격을 바꾸려면 `_collect-loop.yml` 의 `interval_seconds` 기본값을 고치면 됩니다.
 저장소가 public 이라 Actions 시간이 무제한이므로 오래 도는 것 자체는 비용이 들지 않습니다.
 
+## 사이트
+
+- 주소: https://beomhyun-hub.github.io/chzzk-collector/
+- `site/index.html` 한 장이 `data/*.json` 을 읽어 그립니다. 빌드 도구는 쓰지 않습니다.
+- 수집이 한 번 성공할 때마다 워크플로가 `build_site_data.py` 를 돌리고
+  결과를 **`gh-pages` 브랜치에 커밋 하나로 강제로 덮어씁니다.**
+  15분마다 커밋을 쌓으면 저장소가 금방 무거워지므로 이력을 남기지 않습니다.
+  (`gh-pages` 는 사이트 전용입니다. 그 브랜치의 이력은 언제든 사라집니다)
+- 화면
+  - 첫 화면 — 전체 동접·24시간 추이·카테고리 점유율·상위 60개 방송·수집 상태
+  - `#/channel/<channel_id>` — 그 채널의 15분 간격 24시간 추이
+  - `#/category/<category_id>` — 그 카테고리의 1시간 평균 24시간 추이와 상위 방송
+  - 상세는 상위 40개 채널·24개 카테고리까지만 만듭니다(`build_site_data.py` 상단 상수)
+- 카테고리 상세의 '가장 붐빈 시간대'는 **시간 평균의 최고점**입니다.
+  `agg_category_hourly.peak_ccu` 는 카테고리 합계가 아니라 그 시간대 단일 방송의 최고치라 쓰지 않습니다.
+
+로컬에서 확인하려면:
+
+```
+python scripts/build_site_data.py site/data
+python -m http.server 8765 --directory site
+```
+
 ## 명령어
 
 ```
@@ -72,6 +102,9 @@ python -m chzzk_collector.collect
 python scripts/test_api.py      # 치지직 API 가 정상인가
 python scripts/test_db.py       # DB 연결/권한이 정상인가
 python scripts/check_data.py    # 데이터가 잘 쌓이고 있는가
+
+# 사이트 데이터만 다시 만들기
+python scripts/build_site_data.py site/data
 ```
 
 ## API 요약 (공식 문서 검증 완료)
