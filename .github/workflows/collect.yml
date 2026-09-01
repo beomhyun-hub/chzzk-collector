@@ -23,7 +23,8 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  # 불러오는 수집 워크플로가 gh-pages 에 사이트를 밀어야 합니다.
+  contents: write
 
 # 작업 하나의 수명 한계가 6시간이라, 340분짜리 구간을 이어붙여 한 번 깨어날 때
 # 17시간까지 덮습니다. 관측된 최대 cron 간격(6시간 3분)보다 넉넉합니다.

@@ -34,3 +34,10 @@ desktop.ini
 node_modules/
 .next/
 .vercel/
+
+# --- 사이트 ---
+# site/data 는 수집 때마다 새로 만들어 gh-pages 로 밀기만 합니다.
+site/data/
+.site-out/
+preview_data.json
+dashboard_data.json

@@ -21,9 +21,14 @@ on:
         description: "로그에 표시할 구간 번호"
         type: string
         default: "?"
+      publish:
+        description: "수집 뒤 사이트(gh-pages)를 갱신할지"
+        type: boolean
+        default: true
 
 permissions:
-  contents: read
+  # gh-pages 브랜치에 사이트를 밀어야 해서 쓰기가 필요합니다.
+  contents: write
 
 jobs:
   loop:
@@ -60,6 +65,9 @@ jobs:
           MAX_RETRIES: "3"
           RETENTION_DAYS: "21"
 
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUBLISH: ${{ inputs.publish }}
+
           DURATION_MINUTES: ${{ inputs.duration_minutes }}
           INTERVAL_SECONDS: ${{ inputs.interval_seconds }}
           COLLECT_IMMEDIATELY: ${{ inputs.collect_immediately }}
@@ -73,6 +81,33 @@ jobs:
           round=0
           failed=0
 
+          # 수집한 것을 사이트용 JSON 으로 바꿔 gh-pages 브랜치에 밀어넣습니다.
+          # 15분마다 커밋을 쌓으면 저장소가 금방 무거워지므로,
+          # 매번 빈 저장소를 만들어 커밋 하나만 강제로 덮어씁니다(이력 없음).
+          publish() {
+            [ "$PUBLISH" = "true" ] || return 0
+            echo "· 사이트 갱신"
+            if ! python scripts/build_site_data.py site/data ; then
+              echo "!! 사이트 데이터 생성 실패 - 수집은 계속합니다"
+              return 0
+            fi
+            rm -rf .site-out
+            mkdir .site-out
+            cp -r site/. .site-out/
+            touch .site-out/.nojekyll
+            (
+              cd .site-out
+              git init -q -b gh-pages
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git add -A
+              git commit -q -m "사이트 갱신 $(date -u '+%Y-%m-%d %H:%M UTC')"
+              remote="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+              git push -q --force "$remote" gh-pages
+            ) || echo "!! gh-pages 밀기 실패 - 수집은 계속합니다"
+            rm -rf .site-out
+          }
+
           collect() {
             round=$(( round + 1 ))
             echo ""
@@ -81,6 +116,8 @@ jobs:
             if ! python -m chzzk_collector.collect 2>&1 | tee -a collect.log ; then
               failed=$(( failed + 1 ))
               echo "!! 실패 - 다음 회차로 넘어갑니다 (누적 실패 ${failed}회)"
+            else
+              publish
             fi
           }
 
