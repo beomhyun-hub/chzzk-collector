@@ -1,0 +1,1003 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>치지직 라이브 데이터</title>
+<meta name="description" content="치지직 라이브 방송의 동시 시청자와 카테고리 점유율을 15분마다 수집해 보여줍니다.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;600;700;900&display=swap">
+
+<style>
+/* ─────────────────────────────────────────────
+   토큰 — 밝은 도자기 바탕이 기본, 어두운 테마는 토큰만 교체
+   ───────────────────────────────────────────── */
+:root {
+  --ground:     #EFF2ED;
+  --surface:    #FFFFFF;
+  --surface-2:  #F6F8F4;
+  --line:       #D9E0D7;
+  --line-soft:  #E7ECE5;
+  --ink:        #131A16;
+  --ink-2:      #5C675F;
+  --ink-3:      #8A948C;
+  --accent:     #00A063;
+  --accent-wash:#E2F1E9;
+
+  --c1: #00A063;
+  --c2: #3D6FA8;
+  --c3: #B5722A;
+  --c4: #7B57A8;
+  --c5: #B8443C;
+  --c6: #3E8E92;
+  --c7: #8B8F86;
+
+  --ok:   #2E9E6B;
+  --warn: #B5872B;
+  --bad:  #B8443C;
+
+  --shadow: 0 1px 2px rgba(19,26,22,.05), 0 8px 24px -16px rgba(19,26,22,.18);
+
+  --sans: "Noto Sans KR", -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Consolas", monospace;
+
+  /* 제호도 본문과 같은 노토. 굵기와 자간으로만 차이를 줍니다 */
+  --display: "Noto Sans KR", -apple-system, "Malgun Gothic", sans-serif;
+  --display-weight: 900;
+  --display-tracking: -.035em;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:     #0E1311;
+    --surface:    #161D19;
+    --surface-2:  #1C241F;
+    --line:       #27322C;
+    --line-soft:  #1F2823;
+    --ink:        #E7EDE8;
+    --ink-2:      #94A199;
+    --ink-3:      #6D7A73;
+    --accent:     #35D391;
+    --accent-wash:#16301F;
+
+    --c1: #35D391;
+    --c2: #6E9FD6;
+    --c3: #D7A05C;
+    --c4: #A98BD6;
+    --c5: #DE7B72;
+    --c6: #62BFC4;
+    --c7: #99A399;
+
+    --ok:   #46C489;
+    --warn: #D7A94E;
+    --bad:  #DE7B72;
+
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.7);
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground:     #0E1311;
+  --surface:    #161D19;
+  --surface-2:  #1C241F;
+  --line:       #27322C;
+  --line-soft:  #1F2823;
+  --ink:        #E7EDE8;
+  --ink-2:      #94A199;
+  --ink-3:      #6D7A73;
+  --accent:     #35D391;
+  --accent-wash:#16301F;
+
+  --c1: #35D391;
+  --c2: #6E9FD6;
+  --c3: #D7A05C;
+  --c4: #A98BD6;
+  --c5: #DE7B72;
+  --c6: #62BFC4;
+  --c7: #99A399;
+
+  --ok:   #46C489;
+  --warn: #D7A94E;
+  --bad:  #DE7B72;
+
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.7);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 28px 22px 72px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ── 공통 요소 ───────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+
+/* 한글 라벨은 고정폭 서체를 쓰지 않습니다.
+   한글 글리프가 없어 글자마다 다른 서체로 대체되면서 자간이 흐트러집니다.
+   고정폭은 자릿수를 맞춰야 하는 '숫자'에만 씁니다. */
+.label {
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  color: var(--ink-2);
+}
+
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -.005em;
+}
+
+/* ── 상단 관제 스트립 ────────────────────── */
+.masthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.wordmark {
+  font-family: var(--display);
+  font-weight: var(--display-weight);
+  font-size: 26px;
+  letter-spacing: var(--display-tracking);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.wordmark .dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-wash);
+  flex: none;
+}
+
+.mast-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.pill.live { border-color: color-mix(in srgb, var(--ok) 40%, var(--line)); color: var(--ok); }
+.pill.draft { background: var(--surface-2); color: var(--ink-3); }
+
+.pill .beacon {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor;
+  animation: pulse 2.6s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .3 } }
+@media (prefers-reduced-motion: reduce) { .beacon { animation: none } }
+
+/* ── 시안 안내 배너 ──────────────────────── */
+.notice {
+  display: flex;
+  gap: 12px;
+  padding: 12px 15px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px dashed var(--line);
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.6;
+}
+.notice b { color: var(--ink); font-weight: 600; }
+
+
+/* ── 현재 상황 밴드 ──────────────────────── */
+.now {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) 1fr;
+  gap: 0;
+  overflow: hidden;
+}
+
+.now-figure {
+  padding: 22px 24px;
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  justify-content: center;
+}
+
+.big {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(38px, 6vw, 52px);
+  font-weight: 600;
+  letter-spacing: -.035em;
+  line-height: 1.02;
+}
+.big .unit { font-family: var(--sans); font-size: .36em; font-weight: 500; color: var(--ink-2); margin-left: 6px; letter-spacing: 0; }
+
+.delta {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--sans); font-variant-numeric: tabular-nums; font-size: 13.5px;
+  color: var(--ok); margin-top: 7px;
+}
+
+.substats {
+  display: flex; gap: 22px; margin-top: 16px;
+  padding-top: 14px; border-top: 1px solid var(--line-soft);
+  flex-wrap: wrap;
+}
+.substat .v { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 19px; font-weight: 500; }
+.substat .k { font-size: 12.5px; color: var(--ink-2); }
+
+.now-chart { padding: 18px 20px 12px; min-width: 0; }
+.chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+.chart-note { font-size: 12.5px; color: var(--ink-2); }
+svg { display: block; max-width: 100%; }
+
+/* ── 2열 그리드 ──────────────────────────── */
+.cols {
+  display: grid;
+  grid-template-columns: 1.55fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 15px 18px; border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.seg {
+  display: inline-flex; border: 1px solid var(--line); border-radius: 7px;
+  overflow: hidden; background: var(--surface-2);
+}
+.seg button {
+  appearance: none; border: 0; background: transparent;
+  font-family: var(--sans); font-size: 13.5px; font-weight: 500; letter-spacing: 0;
+  padding: 6px 14px; color: var(--ink-2); cursor: pointer;
+}
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--ground); }
+.seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* 카테고리 랭킹 바 */
+.rank { padding: 6px 18px 16px; display: flex; flex-direction: column; }
+.rankrow {
+  display: grid;
+  grid-template-columns: 20px 26px 1fr 62px 52px;
+  align-items: center; gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+/* 카테고리 포스터 (치지직 게임 커버, 세로 3:4) */
+.poster {
+  width: 26px; height: 34px; border-radius: 4px;
+  object-fit: cover; display: block; flex: none;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.poster.fallback { border-style: dashed; }
+.rankrow:last-child { border-bottom: 0; }
+.rankrow .i { font-family: var(--mono); font-size: 11px; color: var(--ink-3); text-align: right; }
+.rankrow .nm { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rankrow .v { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 13px; text-align: right; }
+.rankrow .p { font-family: var(--sans); font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--ink-3); text-align: right; }
+.bar { height: 5px; border-radius: 3px; background: var(--line-soft); margin-top: 4px; overflow: hidden; }
+.bar > i { display: block; height: 100%; border-radius: 3px; }
+
+/* 분야 구성 */
+.mix { padding: 16px 18px 18px; }
+.mixbar { display: flex; height: 30px; border-radius: 6px; overflow: hidden; gap: 2px; }
+.mixbar > span { display: block; }
+.mixlegend { display: flex; flex-direction: column; gap: 9px; margin-top: 15px; }
+.mixlegend div { display: grid; grid-template-columns: 10px 1fr auto auto; align-items: center; gap: 9px; font-size: 14px; }
+.swatch { width: 10px; height: 10px; border-radius: 2px; }
+.mixlegend .v { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.mixlegend .p { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); min-width: 44px; text-align: right; }
+
+/* 수집 상태 */
+.health { padding: 15px 18px 18px; display: flex; flex-direction: column; gap: 10px; }
+.hrow { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 14px; }
+.hrow .v { font-family: var(--sans); font-variant-numeric: tabular-nums; font-weight: 500; }
+.hrow + .hrow { padding-top: 10px; border-top: 1px solid var(--line-soft); }
+
+/* ── 채널 표 ─────────────────────────────── */
+.tablewrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14.5px; min-width: 760px; }
+thead th {
+  position: sticky; top: 0;
+  background: var(--surface);
+  font-family: var(--sans); font-size: 13px; font-weight: 600;
+  letter-spacing: .01em; color: var(--ink-2);
+  text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+thead th.r { text-align: right; }
+tbody td { padding: 10px 14px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
+tbody tr:hover td { background: var(--surface-2); }
+tbody tr:last-child td { border-bottom: 0; }
+td.r { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+td.idx { font-family: var(--mono); color: var(--ink-3); font-size: 12px; width: 34px; }
+td.dur { text-align: right; font-family: var(--sans); font-variant-numeric: tabular-nums;
+         color: var(--ink-2); white-space: nowrap; }
+td.ch { font-weight: 500; white-space: nowrap; }
+
+/* 채널 프로필 */
+.chcell { display: flex; align-items: center; gap: 9px; }
+.avatar {
+  width: 26px; height: 26px; border-radius: 50%;
+  flex: none; object-fit: cover;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.avatar.fallback {
+  display: grid; place-items: center;
+  font-family: var(--sans); font-size: 12px; font-weight: 600;
+  color: var(--ink-3); border-style: dashed;
+}
+td.ti { color: var(--ink-2); max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag {
+  display: inline-block; padding: 3px 9px; border-radius: 4px;
+  font-size: 12.5px; white-space: nowrap;
+  background: var(--surface-2); border: 1px solid var(--line);
+}
+.ccucell { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 96px; }
+.ccucell .bar { width: 100%; margin: 0; }
+
+.search {
+  font-family: var(--sans); font-size: 13px;
+  padding: 6px 11px; border-radius: 7px;
+  border: 1px solid var(--line); background: var(--surface-2); color: var(--ink);
+  min-width: 190px;
+}
+.search:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.empty { padding: 26px 18px; color: var(--ink-3); font-size: 13px; text-align: center; }
+
+/* ── 수집 로그 ───────────────────────────── */
+.logs { padding: 6px 18px 16px; }
+.logrow {
+  display: grid; grid-template-columns: 56px 1fr repeat(3, auto);
+  gap: 14px; align-items: center; padding: 10px 0;
+  border-bottom: 1px solid var(--line-soft); font-size: 13.5px;
+}
+.logrow:last-child { border-bottom: 0; }
+.logrow .st {
+  font-family: var(--sans); font-size: 12px; font-weight: 600;
+  padding: 3px 8px; border-radius: 4px; text-align: center;
+}
+.st.success { background: var(--accent-wash); color: var(--ok); }
+.logrow .m { font-family: var(--sans); font-variant-numeric: tabular-nums; font-size: 13px; color: var(--ink-2); }
+
+footer {
+  margin-top: 4px; padding-top: 18px; border-top: 1px solid var(--line);
+  font-size: 12.5px; color: var(--ink-3); line-height: 1.7;
+}
+footer b { color: var(--ink-2); font-weight: 600; }
+footer ul { margin: 8px 0 0; padding-left: 18px; }
+footer li { margin: 3px 0; }
+
+.cols-bottom { grid-template-columns: 1fr 1.35fr; }
+
+@media (max-width: 900px) {
+  .now { grid-template-columns: 1fr; }
+  .now-figure { border-right: 0; border-bottom: 1px solid var(--line); }
+  .cols, .cols-bottom { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<style>
+/* ── 사이트에서만 쓰는 것 — 라우팅, 상세 화면, 링크 ── */
+a { color: inherit; text-decoration: none; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+.wordmark a { display: inline-flex; align-items: center; gap: 10px; }
+
+.linkrow { cursor: pointer; }
+.linkrow:hover .nm, .linkrow:hover .chcell > span { color: var(--accent); }
+tr.linkrow:hover { background: var(--surface-2); }
+
+.crumb {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--ink-2); margin: 0 0 14px;
+}
+.crumb a:hover { color: var(--accent); }
+.crumb .sep { color: var(--ink-3); }
+
+.dhead {
+  display: grid; grid-template-columns: auto 1fr; gap: 18px;
+  align-items: center; padding: 20px;
+}
+.dhead .face {
+  width: 68px; height: 68px; border-radius: 50%; object-fit: cover;
+  border: 1px solid var(--line); background: var(--surface-2);
+}
+.dhead .face.poster { width: 66px; height: 88px; border-radius: 6px; }
+.dhead h1 {
+  margin: 0; font-family: var(--display); font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking); font-size: 26px; text-wrap: balance;
+}
+.dhead .sub { margin-top: 5px; font-size: 13.5px; color: var(--ink-2); line-height: 1.6; }
+.dhead .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+
+.kpis {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  border-top: 1px solid var(--line);
+}
+.kpi { padding: 14px 20px; border-right: 1px solid var(--line-soft); }
+.kpi:last-child { border-right: 0; }
+.kpi .v { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 21px; font-weight: 500; }
+.kpi .k { font-size: 12.5px; color: var(--ink-2); margin-top: 2px; }
+
+.dchart { padding: 16px 20px 10px; }
+.stale { color: var(--warn); }
+
+@media (max-width: 900px) {
+  .kpis { grid-template-columns: repeat(2, 1fr); }
+  .kpi:nth-child(2) { border-right: 0; }
+  .dhead { grid-template-columns: 1fr; }
+}
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <h1 class="wordmark"><a href="#/"><span class="dot"></span>치지직 라이브 데이터</a></h1>
+    <div class="mast-right">
+      <span class="pill live"><span class="beacon"></span><span id="lastRun">—</span> 수집</span>
+    </div>
+  </header>
+
+  <!-- 첫 화면 -->
+  <div id="viewHome" hidden>
+
+    <section class="card now">
+      <div class="now-figure">
+        <div class="label">전체 동시 시청자</div>
+        <div class="big num" id="totalCcu">—<span class="unit">명</span></div>
+        <div class="delta" id="delta"></div>
+        <div class="substats">
+          <div class="substat"><div class="v num" id="liveCount">—</div><div class="k">진행 중 방송</div></div>
+          <div class="substat"><div class="v num" id="chCount">—</div><div class="k">누적 채널</div></div>
+          <div class="substat"><div class="v num" id="catCount">—</div><div class="k">카테고리</div></div>
+        </div>
+      </div>
+      <div class="now-chart">
+        <div class="chart-head">
+          <h2>시간대별 전체 동접</h2>
+          <span class="chart-note">최근 24시간 · 15분 간격 · 한국시간</span>
+        </div>
+        <svg id="trend" viewBox="0 0 720 168" role="img" aria-label="시간대별 전체 동시 시청자 추이"></svg>
+      </div>
+    </section>
+
+    <div class="cols">
+      <section class="card">
+        <div class="panel-head">
+          <h2>카테고리 점유율</h2>
+          <div class="seg" role="group" aria-label="정렬 기준">
+            <button type="button" data-sort="ccu" aria-pressed="true">동접순</button>
+            <button type="button" data-sort="lives" aria-pressed="false">방송수순</button>
+          </div>
+        </div>
+        <div class="rank" id="catRank"></div>
+      </section>
+
+      <section class="card">
+        <div class="panel-head"><h2>분야 구성</h2></div>
+        <div class="mix">
+          <div class="mixbar" id="mixbar"></div>
+          <div class="mixlegend" id="mixlegend"></div>
+        </div>
+      </section>
+    </div>
+
+    <section class="card">
+      <div class="panel-head">
+        <h2>동접 상위 채널</h2>
+        <input class="search" id="chSearch" type="search" placeholder="채널·카테고리 검색" aria-label="채널 또는 카테고리 검색">
+      </div>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th></th><th>채널</th><th>방송 제목</th><th>카테고리</th>
+              <th class="r">동접</th><th class="r">방송 시간</th>
+            </tr>
+          </thead>
+          <tbody id="chBody"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="chEmpty" hidden>검색 결과가 없습니다.</div>
+    </section>
+
+    <div class="cols cols-bottom">
+      <section class="card">
+        <div class="panel-head"><h2>수집 상태</h2></div>
+        <div class="health" id="health"></div>
+      </section>
+
+      <section class="card">
+        <div class="panel-head"><h2>최근 수집 회차</h2></div>
+        <div class="logs" id="logs"></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- 상세 화면 -->
+  <div id="viewDetail" hidden></div>
+
+  <footer>
+    치지직 공개 API를 15분마다 읽어 Supabase에 쌓고, 그 결과를 이 페이지가 그대로 보여줍니다.
+    동접이 10명 미만인 방송은 수집하지 않습니다.
+    <ul>
+      <li>추이는 수집 시각 기준입니다. 카테고리 추이만 1시간 단위로 묶어 보여줍니다</li>
+      <li>채널 상세는 동접 상위 40개 채널, 카테고리 상세는 상위 24개까지 있습니다</li>
+      <li id="genline"></li>
+    </ul>
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+const CAT_COLORS = ["--c1","--c2","--c3","--c4","--c5","--c6","--c7"];
+const TYPE_LABEL = { GAME: "게임", ETC: "게임 외", ENTERTAINMENT: "엔터테인먼트", NONE: "미분류" };
+const TYPE_COLOR = { GAME: "--c1", ETC: "--c2", ENTERTAINMENT: "--c4", NONE: "--c7" };
+
+const nf = new Intl.NumberFormat("ko-KR");
+const kst = (iso, opt) => new Date(iso).toLocaleString("ko-KR",
+  Object.assign({ timeZone: "Asia/Seoul" }, opt));
+const hhmm = iso => kst(iso, { hour: "2-digit", minute: "2-digit", hour12: false });
+const esc = s => String(s == null ? "" : s)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+
+const $ = id => document.getElementById(id);
+const home = $("viewHome"), detail = $("viewDetail");
+
+async function load(path) {
+  const r = await fetch(path + "?t=" + Date.now(), { cache: "no-store" });
+  if (!r.ok) throw new Error(path + " → HTTP " + r.status);
+  return r.json();
+}
+
+/* ── 선 그래프 ────────────────────────────────
+   pts: [{t: ms, v: number}] · 24시간 창을 x축으로 고정한다. */
+function lineChart(svg, pts, opt) {
+  const o = Object.assign({ w: 720, h: 168, hours: 24, color: "var(--accent)" }, opt || {});
+  const W = o.w, H = o.h, L = 52, R = 12, T = 14, B = 26;
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  if (!pts.length) {
+    svg.innerHTML = '<text x="' + (W / 2) + '" y="' + (H / 2) +
+      '" text-anchor="middle" fill="var(--ink-3)" font-size="13">추이를 그릴 데이터가 아직 없습니다</text>';
+    return;
+  }
+  const end = o.end != null ? o.end : pts[pts.length - 1].t;
+  const start = end - o.hours * 3600 * 1000;
+  const maxV = Math.max(...pts.map(p => p.v)) * 1.18 || 1;
+  const x = t => L + (t - start) / (end - start) * (W - L - R);
+  const y = v => T + (1 - v / maxV) * (H - T - B);
+
+  let out = "";
+  for (let i = 0; i <= 3; i++) {
+    const v = maxV / 3 * i, yy = y(v);
+    out += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + yy.toFixed(1) + '" y2="' + yy.toFixed(1) +
+      '" stroke="var(--line-soft)" stroke-width="1"/>' +
+      '<text x="' + (L - 8) + '" y="' + (yy + 4).toFixed(1) + '" text-anchor="end" fill="var(--ink-3)" ' +
+      'font-size="10.5" font-family="var(--mono)">' + nf.format(Math.round(v)) + '</text>';
+  }
+  const step = o.hours <= 6 ? 1 : 3;
+  for (let h = 0; h <= o.hours; h += step) {
+    const t = start + h * 3600 * 1000, xx = x(t);
+    out += '<text x="' + xx.toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle" fill="var(--ink-3)" ' +
+      'font-size="10.5" font-family="var(--mono)">' +
+      kst(new Date(t).toISOString(), { hour: "2-digit", hour12: false }) + '</text>';
+  }
+  const line = pts.map((p, i) => (i ? "L" : "M") + x(p.t).toFixed(1) + " " + y(p.v).toFixed(1)).join(" ");
+  const firstX = x(pts[0].t), lastX = x(pts[pts.length - 1].t);
+  const area = line + " L" + lastX.toFixed(1) + " " + (H - B) + " L" + firstX.toFixed(1) + " " + (H - B) + " Z";
+  const gid = "g" + Math.random().toString(36).slice(2, 8);
+  out =
+    '<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1">' +
+    '<stop offset="0%" stop-color="' + o.color + '" stop-opacity=".22"/>' +
+    '<stop offset="100%" stop-color="' + o.color + '" stop-opacity="0"/></linearGradient></defs>' +
+    out +
+    '<path d="' + area + '" fill="url(#' + gid + ')"/>' +
+    '<path d="' + line + '" fill="none" stroke="' + o.color + '" stroke-width="2" ' +
+    'stroke-linejoin="round" stroke-linecap="round"/>';
+  const lp = pts[pts.length - 1];
+  out += '<circle cx="' + x(lp.t).toFixed(1) + '" cy="' + y(lp.v).toFixed(1) +
+    '" r="3.5" fill="' + o.color + '"/>';
+  pts.forEach(p => {
+    out += '<circle cx="' + x(p.t).toFixed(1) + '" cy="' + y(p.v).toFixed(1) +
+      '" r="7" fill="transparent"><title>' +
+      esc(hhmm(new Date(p.t).toISOString())) + " · " + nf.format(p.v) + '명</title></circle>';
+  });
+  svg.innerHTML = out;
+}
+
+/* ── 첫 화면 ───────────────────────────────── */
+let DATA = null;
+let catSort = "ccu";
+
+function renderHome() {
+  const last = DATA.series[DATA.series.length - 1];
+  const prev = DATA.series.length > 1 ? DATA.series[DATA.series.length - 2] : null;
+
+  $("totalCcu").innerHTML = nf.format(last.ccu) + '<span class="unit">명</span>';
+  $("liveCount").textContent = nf.format(last.lives);
+  $("chCount").textContent = nf.format(DATA.status["채널_수"]);
+  $("catCount").textContent = nf.format(DATA.status["카테고리_수"]);
+  $("lastRun").textContent = hhmm(DATA.latest);
+
+  const el = $("delta");
+  if (prev) {
+    const d = last.ccu - prev.ccu;
+    const pct = Math.abs(d / prev.ccu * 100).toFixed(1);
+    el.textContent = (d >= 0 ? "▲ " : "▼ ") + nf.format(Math.abs(d)) + "명 (" +
+      (d >= 0 ? "+" : "-") + pct + "%) · 직전 수집 대비";
+    el.style.color = d >= 0 ? "var(--ok)" : "var(--bad)";
+  }
+
+  lineChart($("trend"), DATA.series.map(s => ({ t: new Date(s.at).getTime(), v: s.ccu })),
+    { end: new Date(DATA.latest).getTime() });
+
+  renderCats();
+  renderMix();
+  renderHealth();
+  renderLogs();
+  renderChannels($("chSearch").value);
+  $("genline").textContent = "이 화면의 데이터는 " +
+    kst(DATA.generated_at, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }) +
+    " KST에 만들어졌습니다";
+}
+
+const hasCat = id => DATA.detail_cats.includes(id);
+const hasCh = id => DATA.detail_channels.includes(id);
+
+function renderCats() {
+  const rows = DATA.cats.slice().sort((a, b) => b[catSort] - a[catSort]).slice(0, 12);
+  const max = Math.max(...rows.map(r => r[catSort]));
+  const totalCcu = DATA.cats.reduce((s, c) => s + c.ccu, 0);
+  const host = $("catRank");
+  host.textContent = "";
+  rows.forEach((c, i) => {
+    const link = hasCat(c.id);
+    const el = document.createElement(link ? "a" : "div");
+    el.className = "rankrow" + (link ? " linkrow" : "");
+    if (link) el.href = "#/category/" + c.id;
+    const color = "var(" + CAT_COLORS[i % CAT_COLORS.length] + ")";
+    const shown = c[catSort];
+    const poster = c.img
+      ? '<img class="poster" src="' + esc(c.img) + '" alt="" loading="lazy" decoding="async">'
+      : '<span class="poster fallback" aria-hidden="true"></span>';
+    el.innerHTML =
+      '<div class="i">' + (i + 1) + '</div>' + poster +
+      '<div style="min-width:0">' +
+        '<div class="nm" title="' + esc(c.name) + '">' + esc(c.name) + '</div>' +
+        '<div class="bar"><i style="width:' + (shown / max * 100).toFixed(1) + '%;background:' + color + '"></i></div>' +
+      '</div>' +
+      '<div class="v">' + nf.format(catSort === "ccu" ? c.ccu : c.lives) + '</div>' +
+      '<div class="p">' + (catSort === "ccu"
+        ? (c.ccu / totalCcu * 100).toFixed(1) + "%"
+        : nf.format(c.ccu) + "명") + '</div>';
+    host.appendChild(el);
+  });
+}
+
+function renderMix() {
+  const total = DATA.bytype.reduce((s, t) => s + t.ccu, 0);
+  const bar = $("mixbar"), leg = $("mixlegend");
+  bar.textContent = ""; leg.textContent = "";
+  DATA.bytype.forEach(t => {
+    const pct = t.ccu / total * 100;
+    const color = "var(" + TYPE_COLOR[t.type] + ")";
+    const seg = document.createElement("span");
+    seg.style.width = pct + "%";
+    seg.style.background = color;
+    seg.title = TYPE_LABEL[t.type] + " " + pct.toFixed(1) + "%";
+    bar.appendChild(seg);
+    const row = document.createElement("div");
+    row.innerHTML = '<span class="swatch" style="background:' + color + '"></span>' +
+      '<span>' + TYPE_LABEL[t.type] + '</span>' +
+      '<span class="v">' + nf.format(t.ccu) + '</span>' +
+      '<span class="p">' + pct.toFixed(1) + '%</span>';
+    leg.appendChild(row);
+  });
+}
+
+function renderHealth() {
+  const s = DATA.status;
+  const late = (Date.now() - new Date(DATA.latest).getTime()) / 60000;
+  const rows = [
+    ["마지막 수집", hhmm(DATA.latest) + " (KST)" + (late > 35 ? " · " + Math.round(late) + "분 전" : "")],
+    ["최근 24시간", "성공 " + s["최근24h_성공"] + " · 실패 " + s["최근24h_실패"]],
+    ["쌓인 스냅샷", nf.format(s["스냅샷_행수"]) + "행"],
+    ["누적 방송", nf.format(s["방송_수"]) + "회"],
+    ["DB 사용량", s["전체_db용량"] + " / 500 MB"],
+  ];
+  const host = $("health");
+  host.textContent = "";
+  rows.forEach(([k, v], i) => {
+    const el = document.createElement("div");
+    el.className = "hrow";
+    el.innerHTML = '<span style="color:var(--ink-2)">' + k + '</span>' +
+      '<span class="v' + (i === 0 && late > 35 ? " stale" : "") + '">' + esc(v) + '</span>';
+    host.appendChild(el);
+  });
+}
+
+function renderLogs() {
+  const host = $("logs");
+  host.textContent = "";
+  DATA.runs.forEach(r => {
+    const el = document.createElement("div");
+    el.className = "logrow";
+    el.innerHTML =
+      '<span class="st ' + esc(r.st) + '">' + (r.st === "success" ? "성공" : esc(r.st)) + '</span>' +
+      '<span>' + kst(r.at, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }) + '</span>' +
+      '<span class="m">' + r.pages + '페이지</span>' +
+      '<span class="m">' + nf.format(r.rows) + '건 저장</span>' +
+      '<span class="m">' + (r.ms / 1000).toFixed(1) + '초</span>';
+    host.appendChild(el);
+  });
+}
+
+function elapsed(openIso, nowT) {
+  if (!openIso) return "—";
+  const m = Math.max(0, Math.round((nowT - new Date(openIso).getTime()) / 60000));
+  return Math.floor(m / 60) + "시간 " + String(m % 60).padStart(2, "0") + "분";
+}
+
+function renderChannels(q) {
+  const nowT = new Date(DATA.latest).getTime();
+  const maxCcu = DATA.lives[0].ccu;
+  const term = (q || "").trim().toLowerCase();
+  const body = $("chBody");
+  body.textContent = "";
+  let shown = 0;
+  DATA.lives.forEach((l, idx) => {
+    if (term && !l.ch.toLowerCase().includes(term) && !l.cat.toLowerCase().includes(term)) return;
+    shown++;
+    const tr = document.createElement("tr");
+    const link = hasCh(l.ch_id);
+    if (link) {
+      tr.className = "linkrow";
+      tr.tabIndex = 0;
+      tr.addEventListener("click", () => { location.hash = "#/channel/" + l.ch_id; });
+      tr.addEventListener("keydown", e => {
+        if (e.key === "Enter") location.hash = "#/channel/" + l.ch_id;
+      });
+    }
+    const color = "var(" + TYPE_COLOR[l.type] + ")";
+    const avatar = l.img
+      ? '<img class="avatar" src="' + esc(l.img) + '" alt="" loading="lazy" decoding="async">'
+      : '<span class="avatar fallback" aria-hidden="true">' + esc(l.ch.slice(0, 1)) + '</span>';
+    tr.innerHTML =
+      '<td class="idx">' + (idx + 1) + '</td>' +
+      '<td class="ch"><span class="chcell">' + avatar + '<span>' + esc(l.ch) + '</span></span></td>' +
+      '<td class="ti" title="' + esc(l.title) + '">' + (esc(l.title) || "—") + '</td>' +
+      '<td><span class="tag" style="border-color:' + color + '">' + esc(l.cat) + '</span></td>' +
+      '<td class="r"><div class="ccucell"><span>' + nf.format(l.ccu) + '</span>' +
+        '<span class="bar"><i style="width:' + (l.ccu / maxCcu * 100).toFixed(1) + '%;background:' + color + '"></i></span>' +
+      '</div></td>' +
+      '<td class="dur">' + elapsed(l.open, nowT) + '</td>';
+    body.appendChild(tr);
+  });
+  $("chEmpty").hidden = shown > 0;
+}
+
+/* ── 상세 화면 ─────────────────────────────── */
+function crumb(name) {
+  return '<nav class="crumb"><a href="#/">전체 현황</a><span class="sep">›</span><span>' +
+    esc(name) + '</span></nav>';
+}
+
+function kpiRow(items) {
+  return '<div class="kpis">' + items.map(([v, k]) =>
+    '<div class="kpi"><div class="v">' + v + '</div><div class="k">' + k + '</div></div>').join("") + '</div>';
+}
+
+async function renderChannel(id) {
+  const d = await load("data/channel/" + encodeURIComponent(id) + ".json");
+  const color = "var(" + (TYPE_COLOR[d.type] || "--c7") + ")";
+  const face = d.img
+    ? '<img class="face" src="' + esc(d.img) + '" alt="" decoding="async">'
+    : '<span class="face" aria-hidden="true"></span>';
+  const catTag = d.cat_id && hasCat(d.cat_id)
+    ? '<a class="tag" style="border-color:' + color + '" href="#/category/' + d.cat_id + '">' + esc(d.cat) + '</a>'
+    : '<span class="tag" style="border-color:' + color + '">' + esc(d.cat) + '</span>';
+
+  detail.innerHTML =
+    crumb(d.name || id) +
+    '<section class="card">' +
+      '<div class="dhead">' + face +
+        '<div>' +
+          '<h1>' + esc(d.name || "이름 없음") + '</h1>' +
+          '<div class="sub">' + (esc(d.title) || "제목 없음") + '</div>' +
+          '<div class="tags">' + catTag +
+            '<span class="tag">방송 ' + elapsed(d.open, new Date(d.latest).getTime()) + '</span>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      kpiRow([
+        [nf.format(d.now) + '<span class="unit"></span>', "현재 동접"],
+        [nf.format(d.peak), "24시간 최고"],
+        [nf.format(d.avg), "24시간 평균"],
+        [nf.format(d.ticks), "수집된 시각 수"],
+      ]) +
+      '<div class="dchart">' +
+        '<div class="chart-head"><h2>동접 추이</h2>' +
+        '<span class="chart-note">최근 24시간 · 15분 간격 · 한국시간</span></div>' +
+        '<svg id="dtrend" viewBox="0 0 720 168" role="img" aria-label="채널 동접 추이"></svg>' +
+      '</div>' +
+    '</section>' +
+    (d.cats && d.cats.length > 1
+      ? '<section class="card"><div class="panel-head"><h2>24시간 안에 방송한 카테고리</h2></div>' +
+        '<div class="health"><div class="hrow"><span style="color:var(--ink-2)">' +
+        d.cats.map(esc).join(" · ") + '</span></div></div></section>'
+      : "");
+
+  lineChart($("dtrend"), d.series.map(s => ({ t: new Date(s.at).getTime(), v: s.ccu })),
+    { end: new Date(d.latest).getTime(), color: color });
+}
+
+async function renderCategory(id) {
+  const d = await load("data/category/" + encodeURIComponent(id) + ".json");
+  const color = "var(" + (TYPE_COLOR[d.type] || "--c7") + ")";
+  const face = d.img
+    ? '<img class="face poster" src="' + esc(d.img) + '" alt="" decoding="async">'
+    : '<span class="face poster" aria-hidden="true"></span>';
+
+  detail.innerHTML =
+    crumb(d.name || id) +
+    '<section class="card">' +
+      '<div class="dhead">' + face +
+        '<div>' +
+          '<h1>' + esc(d.name || "미분류") + '</h1>' +
+          '<div class="sub">' + esc(TYPE_LABEL[d.type] || "미분류") + '</div>' +
+        '</div>' +
+      '</div>' +
+      kpiRow([
+        [nf.format(d.now), "이 시간대 평균 동접"],
+        [nf.format(d.peak), "가장 붐빈 시간대"],
+        [nf.format(d.lives), "방송 수"],
+        [nf.format(d.channels), "채널 수"],
+      ]) +
+      '<div class="dchart">' +
+        '<div class="chart-head"><h2>동접 추이</h2>' +
+        '<span class="chart-note">최근 24시간 · 1시간 평균 · 한국시간</span></div>' +
+        '<svg id="dtrend" viewBox="0 0 720 168" role="img" aria-label="카테고리 동접 추이"></svg>' +
+      '</div>' +
+    '</section>' +
+    (d.top.length
+      ? '<section class="card"><div class="panel-head"><h2>이 카테고리 상위 방송</h2></div>' +
+        '<div class="tablewrap"><table><thead><tr><th></th><th>채널</th><th>방송 제목</th>' +
+        '<th class="r">동접</th></tr></thead><tbody>' +
+        d.top.map((t, i) => {
+          const av = t.img
+            ? '<img class="avatar" src="' + esc(t.img) + '" alt="" loading="lazy" decoding="async">'
+            : '<span class="avatar fallback" aria-hidden="true">' + esc((t.ch || "?").slice(0, 1)) + '</span>';
+          const cell = '<span class="chcell">' + av + '<span>' + esc(t.ch) + '</span></span>';
+          return '<tr' + (hasCh(t.ch_id) ? ' class="linkrow" data-ch="' + esc(t.ch_id) + '"' : "") + '>' +
+            '<td class="idx">' + (i + 1) + '</td>' +
+            '<td class="ch">' + cell + '</td>' +
+            '<td class="ti" title="' + esc(t.title) + '">' + (esc(t.title) || "—") + '</td>' +
+            '<td class="r"><span class="num">' + nf.format(t.ccu) + '</span></td></tr>';
+        }).join("") +
+        '</tbody></table></div></section>'
+      : "");
+
+  detail.querySelectorAll("tr[data-ch]").forEach(tr => {
+    tr.addEventListener("click", () => { location.hash = "#/channel/" + tr.dataset.ch; });
+  });
+
+  lineChart($("dtrend"), d.series.map(s => ({ t: new Date(s.at).getTime(), v: s.ccu })),
+    { end: new Date(d.latest_hour).getTime(), color: color });
+}
+
+/* ── 라우터 ────────────────────────────────── */
+function fail(msg, err) {
+  detail.innerHTML = crumb("불러오지 못했습니다") +
+    '<section class="card"><div class="empty">' + esc(msg) +
+    '<br><span style="color:var(--ink-3)">' + esc(err && err.message || "") + '</span></div></section>';
+  home.hidden = true; detail.hidden = false;
+}
+
+async function route() {
+  const m = /^#\/(channel|category)\/(.+)$/.exec(location.hash || "");
+  try {
+    if (!DATA) DATA = await load("data/overview.json");
+  } catch (e) {
+    return fail("데이터를 불러오지 못했습니다.", e);
+  }
+  if (!m) {
+    renderHome();
+    detail.hidden = true; detail.textContent = "";
+    home.hidden = false;
+    window.scrollTo({ top: 0 });
+    return;
+  }
+  try {
+    home.hidden = true; detail.hidden = false;
+    detail.innerHTML = '<section class="card"><div class="empty">불러오는 중…</div></section>';
+    if (m[1] === "channel") await renderChannel(decodeURIComponent(m[2]));
+    else await renderCategory(decodeURIComponent(m[2]));
+    window.scrollTo({ top: 0 });
+  } catch (e) {
+    fail("이 항목의 상세 데이터가 없습니다. 상위 채널·카테고리만 상세를 만듭니다.", e);
+  }
+}
+
+document.querySelectorAll(".seg button").forEach(b => {
+  b.addEventListener("click", () => {
+    catSort = b.dataset.sort;
+    document.querySelectorAll(".seg button").forEach(x =>
+      x.setAttribute("aria-pressed", String(x === b)));
+    renderCats();
+  });
+});
+$("chSearch").addEventListener("input", e => renderChannels(e.target.value));
+
+window.addEventListener("hashchange", route);
+route();
+
+/* 수집이 15분마다 돌므로, 2분마다 새 데이터가 왔는지만 확인한다. */
+setInterval(async () => {
+  try {
+    const fresh = await load("data/overview.json");
+    if (fresh.latest !== DATA.latest) {
+      DATA = fresh;
+      if (!home.hidden) renderHome();
+    }
+  } catch (e) { /* 잠깐 못 읽어도 화면은 그대로 둔다 */ }
+}, 120000);
+</script>
+
+</body>
+</html>
